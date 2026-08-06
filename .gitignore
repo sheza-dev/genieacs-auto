@@ -1,0 +1,38 @@
+# Runtime manager files
+manager/config.conf
+manager/log.txt
+manager/nginx/*.conf
+
+# Instance runtime data
+instances/
+
+# Cloned source trees and deployment outputs
+source/stable/
+source/latest/
+source/**/node_modules/
+source/**/dist/
+source/**/build/
+
+# Backups and dumps
+backups/
+*.bak
+*.dump
+*.tar
+*.tar.gz
+*.tgz
+
+# Certificates and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.pfx
+*.p12
+cloudflare-token*
+secrets/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
