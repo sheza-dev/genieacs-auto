@@ -1,0 +1,19 @@
+name: validate
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  shell-and-compose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare environment file
+        run: cp .env.example .env
+      - name: Validate shell scripts
+        run: |
+          bash -n scripts/*.sh
+          bash -n scripts/lib/*.sh
+      - name: Validate compose config
+        run: docker compose config >/dev/null

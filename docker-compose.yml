@@ -1,0 +1,155 @@
+services:
+  traefik:
+    image: ${TRAEFIK_IMAGE}
+    restart: unless-stopped
+    command:
+      - --global.sendAnonymousUsage=false
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.dns.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.dns.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.dns.acme.dnschallenge=true
+      - --certificatesresolvers.dns.acme.dnschallenge.provider=${ACME_DNS_PROVIDER}
+      - --certificatesresolvers.dns.acme.dnschallenge.delaybeforecheck=${ACME_DNS_PROPAGATION_DELAY}
+      - --serversTransport.insecureSkipVerify=false
+      - --api=false
+      - --ping=true
+    environment:
+      TZ: ${TZ}
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ${TRAEFIK_DATA_DIR}:/letsencrypt
+    networks:
+      - public
+      - private
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  mongo:
+    image: ${MONGO_IMAGE}
+    restart: unless-stopped
+    command: ["mongod", "--auth", "--bind_ip_all"]
+    environment:
+      TZ: ${TZ}
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      MONGO_INITDB_DATABASE: ${GENIEACS_DB_NAME}
+      GENIEACS_DB_NAME: ${GENIEACS_DB_NAME}
+      MONGO_APP_USERNAME: ${MONGO_APP_USERNAME}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD}
+    volumes:
+      - ${MONGO_DATA_DIR}:/data/db
+      - ${MONGO_CONFIGDB_DIR}:/data/configdb
+      - ./scripts/mongo-init.sh:/docker-entrypoint-initdb.d/01-genieacs-user.sh:ro
+    networks:
+      - private
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--username", "${MONGO_ROOT_USERNAME}", "--password", "${MONGO_ROOT_PASSWORD}", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping').ok"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  genieacs:
+    image: ${GENIEACS_IMAGE}
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+      traefik:
+        condition: service_started
+    environment:
+      TZ: ${TZ}
+      GENIEACS_CWMP_ACCESS_LOG_FILE: /var/log/genieacs/genieacs-cwmp-access.log
+      GENIEACS_NBI_ACCESS_LOG_FILE: /var/log/genieacs/genieacs-nbi-access.log
+      GENIEACS_FS_ACCESS_LOG_FILE: /var/log/genieacs/genieacs-fs-access.log
+      GENIEACS_UI_ACCESS_LOG_FILE: /var/log/genieacs/genieacs-ui-access.log
+      GENIEACS_DEBUG_FILE: /var/log/genieacs/genieacs-debug.yaml
+      GENIEACS_EXT_DIR: /opt/genieacs/ext
+      GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
+      GENIEACS_MONGODB_CONNECTION_URL: mongodb://${MONGO_APP_USERNAME}:${MONGO_APP_PASSWORD}@mongo:27017/${GENIEACS_DB_NAME}?authSource=${GENIEACS_DB_NAME}
+    volumes:
+      - ${GENIEACS_EXT_DIR}:/opt/genieacs/ext
+      - ${GENIEACS_LOG_DIR}:/var/log/genieacs
+    networks:
+      - public
+      - private
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=${COMPOSE_PROJECT_NAME}_public
+      - traefik.http.middlewares.secure-headers.headers.browserXssFilter=true
+      - traefik.http.middlewares.secure-headers.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.secure-headers.headers.forceSTSHeader=true
+      - traefik.http.middlewares.secure-headers.headers.framedeny=true
+      - traefik.http.middlewares.secure-headers.headers.stsIncludeSubdomains=true
+      - traefik.http.middlewares.secure-headers.headers.stsPreload=true
+      - traefik.http.middlewares.secure-headers.headers.stsSeconds=31536000
+      - traefik.http.middlewares.secure-headers.headers.referrerPolicy=same-origin
+      - traefik.http.routers.ui.rule=Host(`${UI_HOST}`)
+      - traefik.http.routers.ui.entrypoints=websecure
+      - traefik.http.routers.ui.tls=true
+      - traefik.http.routers.ui.tls.certresolver=dns
+      - traefik.http.routers.ui.tls.domains[0].main=${BASE_DOMAIN}
+      - traefik.http.routers.ui.tls.domains[0].sans=*.${BASE_DOMAIN}
+      - traefik.http.routers.ui.middlewares=secure-headers
+      - traefik.http.services.ui.loadbalancer.server.port=3000
+      - traefik.http.routers.cwmp.rule=Host(`${ACS_HOST}`)
+      - traefik.http.routers.cwmp.entrypoints=websecure
+      - traefik.http.routers.cwmp.tls=true
+      - traefik.http.routers.cwmp.tls.certresolver=dns
+      - traefik.http.routers.cwmp.tls.domains[0].main=${BASE_DOMAIN}
+      - traefik.http.routers.cwmp.tls.domains[0].sans=*.${BASE_DOMAIN}
+      - traefik.http.services.cwmp.loadbalancer.server.port=7547
+      - traefik.http.routers.nbi.rule=Host(`${NBI_HOST}`)
+      - traefik.http.routers.nbi.entrypoints=websecure
+      - traefik.http.routers.nbi.tls=true
+      - traefik.http.routers.nbi.tls.certresolver=dns
+      - traefik.http.routers.nbi.tls.domains[0].main=${BASE_DOMAIN}
+      - traefik.http.routers.nbi.tls.domains[0].sans=*.${BASE_DOMAIN}
+      - traefik.http.routers.nbi.middlewares=secure-headers
+      - traefik.http.services.nbi.loadbalancer.server.port=7557
+      - traefik.http.routers.fs.rule=Host(`${FS_HOST}`)
+      - traefik.http.routers.fs.entrypoints=websecure
+      - traefik.http.routers.fs.tls=true
+      - traefik.http.routers.fs.tls.certresolver=dns
+      - traefik.http.routers.fs.tls.domains[0].main=${BASE_DOMAIN}
+      - traefik.http.routers.fs.tls.domains[0].sans=*.${BASE_DOMAIN}
+      - traefik.http.routers.fs.middlewares=secure-headers
+      - traefik.http.services.fs.loadbalancer.server.port=7567
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+networks:
+  public:
+  private:
+    internal: true
