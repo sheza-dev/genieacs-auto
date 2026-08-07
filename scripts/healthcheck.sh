@@ -15,10 +15,11 @@ fi
 check_http() {
   local name="$1"
   local url="$2"
+  local regex="${3:-^[23][0-9][0-9]$}"
   local code
 
   code="$(curl "${curl_opts[@]}" "$url" || true)"
-  if [[ "$code" =~ ^[1-4][0-9][0-9]$ ]]; then
+  if [[ "$code" =~ $regex ]]; then
     echo "[OK]  $name -> $url (HTTP $code)"
   else
     echo "[FAIL] $name -> $url (HTTP ${code:-000})"
@@ -28,9 +29,9 @@ check_http() {
 
 status=0
 check_http "nginx-health" "https://${ACS_HOST}/healthz" || status=1
-check_http "cwmp" "https://${ACS_HOST}/" || status=1
+check_http "cwmp" "https://${ACS_HOST}/" "^[2-4][0-9][0-9]$" || status=1
 check_http "ui" "https://${UI_HOST}/" || status=1
-check_http "nbi" "https://${NBI_HOST}/" || status=1
-check_http "fs" "https://${FS_HOST}/" || status=1
+check_http "nbi" "https://${NBI_HOST}/" "^[2-4][0-9][0-9]$" || status=1
+check_http "fs" "https://${FS_HOST}/" "^[2-4][0-9][0-9]$" || status=1
 
 exit "$status"

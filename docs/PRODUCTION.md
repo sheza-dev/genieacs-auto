@@ -94,7 +94,7 @@ gzip -dc backups/mongo/<file>.archive.gz | docker compose exec -T mongo mongores
   --username "$MONGO_ROOT_USERNAME" \
   --password "$MONGO_ROOT_PASSWORD" \
   --authenticationDatabase admin \
-  --archive --gzip
+  --archive
 ```
 
 ## 9) Update procedure

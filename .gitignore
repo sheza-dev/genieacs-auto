@@ -8,6 +8,10 @@ nginx/certs/*.key
 nginx/certs/*.pem
 nginx/certs/*.p12
 nginx/certs/*.pfx
+nginx/certs/**/*.key
+nginx/certs/**/*.pem
+nginx/certs/**/*.p12
+nginx/certs/**/*.pfx
 nginx/certs/live/
 
 # Backups and dumps

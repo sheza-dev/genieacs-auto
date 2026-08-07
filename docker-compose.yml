@@ -12,7 +12,7 @@ services:
       - mongo_data:/data/db
       - mongo_config:/data/configdb
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok || process.exit(1)"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -174,7 +174,7 @@ services:
       - ./nginx/certs:/etc/nginx/certs:ro
       - nginx_logs:/var/log/nginx
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1/healthz || exit 1"]
+      test: ["CMD-SHELL", "wget -q --no-check-certificate --spider https://127.0.0.1/healthz || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 5
