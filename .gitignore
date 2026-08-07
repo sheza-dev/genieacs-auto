@@ -1,0 +1,22 @@
+# Local env and secrets
+.env
+.env.*
+!.env.example
+
+# Certificates and private keys
+nginx/certs/*.key
+nginx/certs/*.pem
+nginx/certs/*.p12
+nginx/certs/*.pfx
+nginx/certs/live/
+
+# Backups and dumps
+backups/
+*.archive
+*.archive.gz
+*.dump
+*.bak
+
+# Local artifacts
+*.log
+.DS_Store
