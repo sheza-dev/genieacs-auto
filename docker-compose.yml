@@ -1,0 +1,196 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: genieacs-mongo
+    restart: unless-stopped
+    command: ["--bind_ip_all"]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+      TZ: ${TZ}
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok || process.exit(1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    networks:
+      - backend
+
+  redis:
+    image: redis:7-alpine
+    container_name: genieacs-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend
+
+  genieacs-cwmp:
+    image: genieacs/genieacs:1.2.13
+    container_name: genieacs-cwmp
+    restart: unless-stopped
+    command: genieacs-cwmp
+    environment:
+      TZ: ${TZ}
+      GENIEACS_CWMP_ACCESS_LOG_FILE: /var/log/genieacs/cwmp-access.log
+      GENIEACS_CWMP_ERROR_LOG_FILE: /var/log/genieacs/cwmp-error.log
+      GENIEACS_MONGODB_CONNECTION_URL: ${GENIEACS_MONGODB_CONNECTION_URL}
+      GENIEACS_REDIS_URL: ${GENIEACS_REDIS_URL}
+      GENIEACS_EXT_DIR: /opt/genieacs/ext
+      GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - genieacs_logs:/var/log/genieacs
+      - ./genieacs/ext:/opt/genieacs/ext
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(7547,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - backend
+
+  genieacs-nbi:
+    image: genieacs/genieacs:1.2.13
+    container_name: genieacs-nbi
+    restart: unless-stopped
+    command: genieacs-nbi
+    environment:
+      TZ: ${TZ}
+      GENIEACS_NBI_ACCESS_LOG_FILE: /var/log/genieacs/nbi-access.log
+      GENIEACS_NBI_ERROR_LOG_FILE: /var/log/genieacs/nbi-error.log
+      GENIEACS_MONGODB_CONNECTION_URL: ${GENIEACS_MONGODB_CONNECTION_URL}
+      GENIEACS_REDIS_URL: ${GENIEACS_REDIS_URL}
+      GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - genieacs_logs:/var/log/genieacs
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(7557,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - backend
+
+  genieacs-fs:
+    image: genieacs/genieacs:1.2.13
+    container_name: genieacs-fs
+    restart: unless-stopped
+    command: genieacs-fs
+    environment:
+      TZ: ${TZ}
+      GENIEACS_FS_ACCESS_LOG_FILE: /var/log/genieacs/fs-access.log
+      GENIEACS_FS_ERROR_LOG_FILE: /var/log/genieacs/fs-error.log
+      GENIEACS_MONGODB_CONNECTION_URL: ${GENIEACS_MONGODB_CONNECTION_URL}
+      GENIEACS_REDIS_URL: ${GENIEACS_REDIS_URL}
+      GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - genieacs_logs:/var/log/genieacs
+      - ./genieacs/files:/opt/genieacs/files
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(7567,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - backend
+
+  genieacs-ui:
+    image: genieacs/genieacs:1.2.13
+    container_name: genieacs-ui
+    restart: unless-stopped
+    command: genieacs-ui
+    environment:
+      TZ: ${TZ}
+      GENIEACS_UI_ACCESS_LOG_FILE: /var/log/genieacs/ui-access.log
+      GENIEACS_UI_ERROR_LOG_FILE: /var/log/genieacs/ui-error.log
+      GENIEACS_MONGODB_CONNECTION_URL: ${GENIEACS_MONGODB_CONNECTION_URL}
+      GENIEACS_REDIS_URL: ${GENIEACS_REDIS_URL}
+      GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
+      GENIEACS_UI_USERNAME: ${GENIEACS_UI_USERNAME}
+      GENIEACS_UI_PASSWORD: ${GENIEACS_UI_PASSWORD}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - genieacs_logs:/var/log/genieacs
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(3000,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - backend
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: genieacs-nginx
+    restart: unless-stopped
+    depends_on:
+      genieacs-cwmp:
+        condition: service_healthy
+      genieacs-nbi:
+        condition: service_healthy
+      genieacs-fs:
+        condition: service_healthy
+      genieacs-ui:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - nginx_logs:/var/log/nginx
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --no-check-certificate --spider https://127.0.0.1/healthz || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - backend
+      - public
+
+volumes:
+  mongo_data:
+  mongo_config:
+  redis_data:
+  genieacs_logs:
+  nginx_logs:
+
+networks:
+  backend:
+    internal: true
+  public:
